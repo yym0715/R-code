@@ -1,0 +1,217 @@
+div_group <- function(x, n, data){
+  if (n == 2) {
+    y = ifelse(data[, x] < median(data[, x], na.rm = T), 1, 2)
+  }
+  if (n == 3) {
+    prob = quantile(data[x], probs = c(1/3, 2/3), na.rm = T)
+    y = ifelse(data[x] < prob[1], 1,
+               ifelse(data[x] < prob[2], 2, 3))
+  }
+  if (n == 4) {
+    prob <- quantile(data[x], probs = c(1/4, 2/4, 3/4), na.rm = T)
+    y <- ifelse(data[x] < prob[1], 1,
+                ifelse(data[x] < prob[2], 2,
+                       ifelse(data[x] < prob[3], 3, 4)))
+  }
+  if (n == 5) {
+    prob <- quantile(data[x], probs = c(1/5, 2/5, 3/5, 4/5), na.rm = T)
+    y <- ifelse(data[x] < prob[1], 1,
+                ifelse(data[x] < prob[2], 2,
+                       ifelse(data[x] < prob[3], 3,
+                              ifelse(data[x] < prob[4], 4, 5))))
+    
+    # y <- cut(data[ , x], breaks = c(-Inf, a[1], a[2], a[3], a[4], Inf),
+    #          labels = c('1', '2', '3', '4', '5'))
+  }
+  return(as.factor(y))
+}
+
+
+
+myrownames <- function(x, data, n){
+  a <- quantile(data[ , x], probs = 1/2, na.rm = T)
+  b <- quantile(data[ , x], probs = c(1/3, 2/3), na.rm = T)
+  c <- quantile(data[ , x], probs = c(1/4, 2/4, 3/4), na.rm = T)
+  d <- quantile(data[ , x], probs = c(1/4, 2/5, 3/5, 4/5), na.rm = T)
+  if(n == 1){
+    name <- x
+  } else if(n == 2){
+   name <- c('Binaries',
+              paste0('    B1 (<', round(a, 1), ')'),
+              paste0('    B2 (≥', round(a, 1), ')'),
+              'p for trend')
+  } else if(n == 3){
+    name <- c('Tertiles',
+              paste0('    T1 (<', round(b[1], 1), ')'),
+              paste0('    T2 (', round(b[1], 1), '-', round(b[2], 1), ')'),
+              paste0('    T3 (≥', round(b[2], 1), ')'),
+              'p for trend ')
+  } else if(n == 4){
+    name <- c('Quartiles',
+              paste0('    Q1 (<', round(c[1], 1), ')'),
+              paste0('    Q2 (', round(c[1], 1), '-', round(c[2], 1), ')'),
+              paste0('    Q3 (', round(c[2], 1), '-', round(c[3], 1), ')'),
+              paste0('    Q4 (≥', round(c[3], 1), ')'),
+              'p for trend  ')
+  } else(
+    name <- c('Quintiles',
+              paste0('    Q1 (<', round(d[1], 1), ')'),
+              paste0('    Q2 (', round(d[1], 1), '-', round(d[2], 1), ')'),
+              paste0('    Q3 (', round(d[2], 1), '-', round(d[3], 1), ')'),
+              paste0('    Q4 (', round(d[3], 1), '-', round(d[4], 1), ')'),
+              paste0('    Q5 (≥', round(d[4], 1), ')'),
+              'p for trend   ')
+  )
+  return(name)
+}
+
+table2_MultRegression(x, y, adj, data, family = binomial())
+
+table2_MultRegression <- function(x, y, adj, data, family = gaussian()) {
+  # x <- 'fa'
+  # y <- 'CKD_p'
+  # adj <- c('sex', 'age', 'bmi', 'center', 'c677t', 'smoking', 'drinking', 'group', 
+  #         'sbp', 'dbp', 'sbp_ave', 'dbp_ave', 'tcho', 'tg', 'hdl', 'b12','glu')
+  adj1 <- setdiff( adj, c(x, y) )
+  # data <- mydata
+  # family <- binomial()
+  
+  formula1 <- paste0(y, '~', x)
+  formula1 <- as.formula( formula1 )
+  lg_crude <- glm(formula1, data = data, family )  # summary(lg_crude)
+  
+  formula2 <- paste0(y, '~', x , '+', paste(adj1, collapse = '+'))
+  formula2 <- as.formula( formula2 )
+  lg_adj <- glm(formula2, data = data, family)  # summary(lg_adj)
+  
+  if (is.factor(data[, x])) {
+    level <- length(levels(data[ ,x]))  ###### x level
+    
+    ### 计算 p for trend 的p值 ###
+    trend_formula1 <- paste0(y, '~', 'as.numeric(', x, ')')
+    trend_formula1 <- as.formula(trend_formula1)
+    trend_crude <- glm(trend_formula1, data = data, family)
+    trend_formula2 <- paste0(y, '~', 'as.numeric(', x, ')', '+', paste(adj1, collapse = '+'))
+    trend_formula2 <- as.formula(trend_formula2)
+    trend_adj <- glm(trend_formula2, data = data, family)
+    trend_p_crude <- summary(trend_crude)$coefficients[2, 4]
+    trend_p_adj <- summary(trend_adj)$coefficients[2, 4]
+    p_for_trend <- c('', '', ifelse(trend_p_crude < 0.001, '<0.001', sprintf("%.3f", trend_p_crude)), '', 
+                     ifelse(trend_p_adj < 0.001, '<0.001', sprintf("%.3f", trend_p_adj)))
+    if( family$family == 'gaussian' ){
+      OR_crude_interval <- summary(lg_crude)$coefficients
+      OR_crude <- coef(lg_crude)[2:level]
+      CI_crude_down <- OR_crude_interval[2:level, 1] + qnorm(0.025)*OR_crude_interval[2:level, 2]
+      CI_crude_up <- OR_crude_interval[2:level, 1] + qnorm(0.975)*OR_crude_interval[2:level, 2]
+      
+      OR_adj_interval <- summary(lg_adj)$coefficients
+      OR_adj <- coef(lg_adj)[2:level]
+      CI_adj_down <- OR_adj_interval[2:level, 1] + qnorm(0.025)*OR_adj_interval[2:level, 2]
+      CI_adj_up <- OR_adj_interval[2:level, 1] + qnorm(0.975)*OR_adj_interval[2:level, 2]
+    } else {
+      OR_crude_interval <- summary(lg_crude)$coefficients
+      OR_crude <- exp( coef(lg_crude)[2:level] )
+      CI_crude_down <- exp( OR_crude_interval[2:level, 1] + qnorm(0.025)*OR_crude_interval[2:level, 2] )
+      CI_crude_up <- exp( OR_crude_interval[2:level, 1] + qnorm(0.975)*OR_crude_interval[2:level, 2] )
+      
+      OR_adj_interval <- summary(lg_adj)$coefficients
+      OR_adj <- exp( coef(lg_adj)[2:level] )
+      CI_adj_down <- exp( OR_adj_interval[2:level, 1] + qnorm(0.025)*OR_adj_interval[2:level, 2] )
+      CI_adj_up <- exp( OR_adj_interval[2:level, 1] + qnorm(0.975)*OR_adj_interval[2:level, 2] )
+    }
+    
+    crude_OR <- paste0(sprintf("%.2f", OR_crude), '(', 
+                       sprintf("%.2f", CI_crude_down), ',',
+                       sprintf("%.2f", CI_crude_up), ')')
+    crude_OR <- c('ref', crude_OR)
+    adj_OR <- paste0(sprintf("%.2f", OR_adj), '(', 
+                     sprintf("%.2f", CI_adj_down), ',',
+                     sprintf("%.2f", CI_adj_up), ')')
+    adj_OR <- c('ref', adj_OR)
+    
+    p_crude <- summary(lg_crude)$coefficients[2:level, 4]
+    p_crude <- as.numeric(c(NA, p_crude))
+    p_adj <- summary(lg_adj)$coefficients[2:level, 4]
+    p_adj <- as.numeric(c(NA, p_adj))
+    
+    n <- table(data[, x])
+    var_imformation <- cbind(n, crude_OR, ifelse(p_crude < 0.001, '<0.001', sprintf("%.3f", p_crude)),
+                             adj_OR, ifelse(p_adj < 0.001, '<0.001', sprintf("%.3f", p_adj)))
+    var_imformation <- rbind(var_imformation, p_for_trend)
+    var_imformation <- as.data.frame(var_imformation)
+    colnames(var_imformation) <- c('N', 'crude_OR(95%CI)', 'P Value', 'adj_OR(95%CI)', 'P Value')
+  } else {
+    if( family$family == 'gaussian' ){
+      OR_crude_interval <- summary(lg_crude)$coefficients
+      OR_crude <- coef(lg_crude)[2]
+      CI_crude_down <- OR_crude_interval[2, 1] + qnorm(0.025)*OR_crude_interval[2, 2]
+      CI_crude_up <- OR_crude_interval[2, 1] + qnorm(0.975)*OR_crude_interval[2, 2]
+      
+      OR_adj_interval <- summary(lg_adj)$coefficients
+      OR_adj <- coef(lg_adj)[2]
+      CI_adj_down <- OR_adj_interval[2, 1] + qnorm(0.025)*OR_adj_interval[2, 2]
+      CI_adj_up <- OR_adj_interval[2, 1] + qnorm(0.975)*OR_adj_interval[2, 2]
+    } else {
+      OR_crude_interval <- summary(lg_crude)$coefficients
+      OR_crude <- exp( coef(lg_crude)[2] )
+      CI_crude_down <- exp( OR_crude_interval[2, 1] + qnorm(0.025)*OR_crude_interval[2, 2] )
+      CI_crude_up <- exp( OR_crude_interval[2, 1] + qnorm(0.975)*OR_crude_interval[2, 2] )
+      
+      OR_adj_interval <- summary(lg_adj)$coefficients
+      OR_adj <- exp( coef(lg_adj)[2] )
+      CI_adj_down <- exp( OR_adj_interval[2, 1] + qnorm(0.025)*OR_adj_interval[2, 2] )
+      CI_adj_up <- exp( OR_adj_interval[2, 1] + qnorm(0.975)*OR_adj_interval[2, 2] )
+    }
+    
+    crude_OR <- paste0(sprintf("%.2f", OR_crude), '(', 
+                       sprintf("%.2f", CI_crude_down), ',',
+                       sprintf("%.2f", CI_crude_up), ')')
+    adj_OR <- paste0(sprintf("%.2f", OR_adj), '(', 
+                     sprintf("%.2f", CI_adj_down), ',',
+                     sprintf("%.2f", CI_adj_up), ')')
+    
+    p_crude <- summary(lg_crude)$coefficients[2, 4]
+    p_adj <- summary(lg_adj)$coefficients[2, 4]
+    n <- sum(!is.na(data[, x]))
+    var_imformation <- c(n, crude_OR, ifelse(p_crude < 0.001, '<0.001', sprintf("%.3f", p_crude)),
+                         adj_OR, ifelse(p_adj < 0.001, '<0.001', sprintf("%.3f", p_adj)))
+    var_imformation <- matrix(var_imformation, nrow = 1)
+    colnames(var_imformation) <- c('N', 'crude_OR(95%CI)', 'P Value', 'adj_OR(95%CI)', 'P Value')
+    rownames(var_imformation) <- x
+  }
+  var_imformation
+}
+
+
+table2 <- function(x, y, adj, data, output = NULL, ...) {
+
+  result <- list()
+  for(cat in 1:length(output)){
+    cat_var <- output[cat]
+    if(cat_var == 1){
+      ti <- table2_MultRegression(x, y, adj, data, ...)
+      rownames(ti) <- myrownames(x, data, cat_var)
+    } else{
+      xx <- paste0(x, cat_var)
+      data$newcol <- div_group(x, cat_var, data)
+      ti <- table2_MultRegression('newcol', y, adj, data, ...)
+      ti <- rbind('', ti)
+      rownames(ti) <- myrownames(x, data, cat_var)
+    }
+    result <- rbind(result, ti)
+  }
+  result
+}
+
+
+
+# examples:
+#  (1) y为连续型
+#    table2(x, y, adj, data, output, family = gaussian())
+#  (2) y为分类型
+#    table2(x, y, adj, data, output, family = binomial())
+#  其中x, y, adj分别为自变量,因变量和调整变量;
+#  参数output控制想要输出的结果,参数范围为1~5,分别代表连续型和二三四五分类。
+#  如果想输出连续型和三、五分类, 调用形式如下：
+#    table2(x, y, adj, data, output = c(1, 3, 5), family = )
+
