@@ -1,0 +1,23 @@
+mean <- aggregate(df$X8周VB12, by=list(df$CKD, df$DOSE), FUN=mean, na.rm=T)
+sd <- aggregate(df$X8周VB12, by=list(df$CKD, df$DOSE), FUN=sd, na.rm=T)
+df_res <- data.frame(mean, sd=sd$x)
+colnames(df_res) = c("CKD", "DOSE", "Mean", "Sd")
+
+df_res$CKD<-as.factor(df_res$CKD)
+df_res$DOSE<-as.factor(df_res$DOSE)
+
+ggplot(df_res, aes(x=DOSE, y=Mean, fill=CKD)) +
+  geom_bar(stat="identity",position="dodge",color="black", width=.6) +
+  ylab("VB12")+
+  geom_errorbar(aes(ymin=Mean-Sd, ymax=Mean +Sd),position=position_dodge(.6), width=.2)+
+  theme(axis.title.x = element_text(size = 20),
+        axis.title.y = element_text(size = 20))+
+  theme(axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 20))+
+  theme(legend.text = element_text(size = 14), 
+        legend.title = element_text(size = 14))+
+  scale_fill_discrete(labels=c("Non-CKD","CKD"))+
+  labs(fill="group") +
+  scale_fill_manual(values = c('#2a9d8f', '#e63946'), 
+                    labels = c('Non-CKD', 'CKD'))
+ggsave(".jpg",width=15,height=10)
