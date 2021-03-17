@@ -1,0 +1,53 @@
+smoothplot <- function(x, y, adj = NULL, data, cutoff = NULL, 
+                       fx = T, k = 5, file, ...){
+ 
+   adj1 <- setdiff(adj, c(x, y))
+  
+  if( is.factor(data[ ,y]) | is.character(data[ ,y]) ){
+    if( is.null(adj1) ){
+      formula_logit <- as.formula( paste0( y, ' ~ s(', x, ',fx = ', fx,  ', k =', k , ')' ) )
+    } else {
+      formula_logit <- as.formula( paste0( y, ' ~ s(', x, ',fx = ', fx,  ', k =', k , ')', ' + ',
+                                           paste0(adj1, collapse = ' + ') ) )
+    }
+    
+    gam <- gam( formula_logit, family = binomial(), data = data)
+
+    dev.new()
+    jpeg( file, width = 800, height = 600 )
+    par(mar = c(6, 6, 4, 2))
+    plot(gam, xlab = x, ylab = 'Adjusted lnORs', cex.axis = 2, cex.lab = 2) 
+    title(...)
+    abline( v = cutoff, lty = 5, col = 'red' )
+    dev.off()
+    
+  } else {
+    if( is.null(adj1) ){
+      formula_con <- as.formula( paste0( y, ' ~ s(', x, ',fx = ', fx,  ', k =', k , ')' ) )
+      gam <- gam( formula_con, family = gaussian(), data = data )
+      summary(gam)
+      dev.new()
+      jpeg( file, width = 800, height = 600)
+      par(mar = c(6, 6, 4, 2))
+      plot(gam, xlab = x, ylab = y, cex.axis = 2, cex.lab = 2) 
+      title(...)
+      abline( v = cutoff, lty = 5, col = 'red' )
+      dev.off()
+    } else {
+      formula_con_crude <- as.formula( paste0( y, ' ~ s(', x, ', fx = ', fx, ', k =', k , ')' ) )
+      gam_crude <- gam( formula_con_crude, data = data, family = gaussian() )
+      formula_con_adj <-   as.formula( paste0( y, ' ~ s(', x, ', fx = ', fx, ', k =', k, ') +',
+                                           paste0(adj1, collapse = '+')) )
+      gam_adj <- gam( formula_con_adj, data = data, family = gaussian() )
+      intecept <- summary(gam_crude)$p.coeff[1]
+      
+      dev.new()
+      jpeg( file, width = 800, height = 600)
+      par(mar = c(6, 6, 4, 2))
+      plot(gam_adj, xlab = x, ylab = y, shift = intecept, cex.axis = 2, cex.lab = 2) 
+      title(...)
+      abline( v = cutoff, lty = 5, col = 'red' )
+      dev.off()
+     }
+  }
+}
