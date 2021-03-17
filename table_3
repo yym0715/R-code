@@ -1,0 +1,89 @@
+table3_model <- function(myres, myind, myadj, myint, data, family = gaussian()){
+  
+  formula <- as.formula( paste(myres, ' ~ ', myind, ' + ',
+                               paste(myadj[-which(myadj == myint)], collapse = ' + ') ) )
+  model <- glm(formula, data = data, family)
+  
+  N <- nrow( subset(data[ ,!is.na(myres)]) )
+  
+  if( family$family == 'gaussian' ){
+    beita <-  paste0(sprintf('%.2f', summary(model)$coef[2, 1]), '(',
+                     sprintf('%.2f', summary(model)$coef[2, 1] - abs(qnorm(0.025))*summary(model)$coef[2, 2]), ', ',
+                     sprintf('%.2f', summary(model)$coef[2, 1] + abs(qnorm(0.025))*summary(model)$coef[2, 2]), ')')
+  } else{
+    beita <-  paste0(sprintf('%.2f', exp( summary(model)$coef[2, 1]) ), '(',
+                     sprintf('%.2f', exp( summary(model)$coef[2, 1] - abs(qnorm(0.025))*summary(model)$coef[2, 2]) ), ', ',
+                     sprintf('%.2f', exp( summary(model)$coef[2, 1] + abs(qnorm(0.025))*summary(model)$coef[2, 2]) ), ')')
+  }
+  
+  p <- ifelse( summary(model)$coef[2,4] < 0.001, '< 0.001',
+               sprintf('%.3f', summary(model)$coef[2,4]) )
+  output <- c(N, beita, p)
+  return(output)
+  
+}
+
+
+
+table3_interaction <- function(myres, myind, myadj, myint, data, family = gaussian()){
+  
+  formula_non <- as.formula(paste(myres, ' ~ ', myind, ' + ', myint, ' + ', 
+                                  paste(myadj[-which(myadj == myint)], collapse = ' + ')))
+  formula_int <- as.formula(paste(myres, ' ~ ', myind, ' * ', myint, ' + ', 
+                                  paste(myadj[-which(myadj == myint)], collapse = ' + ')))
+  
+  model_non <- glm(formula_non, data = data, family)
+  model_int <- glm(formula_int, data = data, family)
+  
+  p_int <- lmtest::lrtest(model_non, model_int)$`Pr(>Chisq)`[2]
+  ifelse(p_int < 0.001, '< 0.001', sprintf('%.3f', p_int))
+}
+
+
+
+table3 <- function(myres, myind, myadj, data, family = gaussian()){
+  
+  myadj1 <- setdiff(myadj, c(myres, myind))
+  mylist <- list()
+  
+  
+  for(i in 1:length(myadj1)){
+    myint <- myadj1[i]
+    value_int <- eval(parse(text = paste0('data_inter$', myint)))
+    if( is.numeric(value_int) ){
+      mymatrix <- data.frame(matrix(1:15, ncol = 5))
+      mymatrix[ , ] <- ''
+      median <- median( value_int, na.rm = T)
+      subset_low <- data[data[ ,myint] <= median, ]
+      subset_high <- data_inter[data_inter[ ,myint] > median, ]
+      mymatrix[1:3, 1] <- c( myint, 
+                             paste('≤', sprintf('%.1f', median)), 
+                             paste('>', sprintf('%.1f', median)) )
+      mymatrix[1, 5] <- table3_interaction(myres, myind, myadj1, myint, data, family)
+      mymatrix[2:3, 2:4] <- rbind( table3_model(myres, myind, myadj1, myint, data = subset_low, family),
+                                   table3_model(myres, myind, myadj1, myint, data = subset_high, family) )
+    } else{
+      levels <- levels( data[ ,myint] )
+      nlevel <- length( levels )
+      mymatrix <- data.frame( matrix(1:((nlevel + 1)*5), ncol = 5) )
+      mymatrix[ , ] <- ''
+      mymatrix[ , 1] <- c( myint, levels )
+      mymatrix[1, 5] <- table3_interaction(myres, myind, myadj1, myint, data, family)
+      for(j in 1:nlevel){
+        mysubset <- data[data[ ,myint] == levels[j], ]
+        mysubset$drinking; mysubset$smoking
+        mymatrix[j + 1, 2:4] <- table3_model(myres, myind, myadj1, myint, data = mysubset, family)
+      }
+    }
+    mylist <- rbind(mylist, mymatrix)
+  }
+  if(family$family == 'gaussian'){
+    colnames( mylist ) <- c('Variables', 'N', 'β Adj (95%CI)', 'P Adj', 'P for interaction')
+  } else{
+    colnames( mylist ) <- c('Variables', 'N', 'OR Adj (95%CI)', 'P Adj', 'P for interaction')
+  }
+  return(mylist)
+}
+
+
+
